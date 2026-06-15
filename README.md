@@ -43,9 +43,11 @@ Install the plotting and optional geometry dependencies with:
 
 ```bash
 pip install -r requirements.txt
+```
 
 The main scripts use the Python standard library and Matplotlib for plotting.
 Some optional fallback geometry operations can use Shapely when it is installed.
+
 ## Run the Main Demo
 
 From the repository root:
