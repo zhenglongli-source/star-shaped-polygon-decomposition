@@ -39,7 +39,8 @@ debug_output.json                  Pre-exported example data
 
 Python 3.10+ is recommended.
 
-The core scripts use standard Python plus the geometry dependencies already used in the project environment. If Shapely is available, some fallback geometry operations can use it.
+The main scripts use the Python standard library and Matplotlib for plotting.
+Some optional fallback geometry operations can use Shapely when it is installed.
 
 ## Run the Main Demo
 
