@@ -1,15 +1,16 @@
 """
-Local backend for the Computational Geometry star-shaped decomposition interactive viewer.
+Local backend for the interactive star-shaped decomposition viewer.
 
-Place this file either:
-  A) in the project root that contains submission/star-shaped decomposition_star_decomposition_code_v2/, or
-  B) directly next to the star-shaped decomposition_star_decomposition_code_v2/ folder, or
-  C) inside star-shaped decomposition_star_decomposition_code_v2/ itself.
+Run from the repository root:
 
-Run:
-  python interactive_server_updated.py
-Open:
-  http://localhost:8010/interactive.html
+    python interactive_server.py
+
+Then open the local viewer in a browser:
+
+    http://localhost:8010/interactive.html
+
+The server exposes example polygons and decomposition results to the HTML
+visualizer. It is intended for local demonstration and debugging.
 """
 
 from __future__ import annotations
