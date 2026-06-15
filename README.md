@@ -142,7 +142,7 @@ Possible next improvements include:
 - Expand the HM-style convex decomposition stage and compare it systematically with the default pre-merge stage.
 - Strengthen DCEL-based data structures for maintaining adjacency and boundary updates.
 - Add more systematic benchmark examples.
-- Add a polished hosted web demo.
+- Optionally add a polished hosted web demo.
 
 ## Project Status
 
