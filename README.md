@@ -122,25 +122,22 @@ This optional backend is not required for the main demo, static visualizer, or i
 ## Current Limitations
 
 - Input polygons are expected to be simple.
-- Degenerate inputs such as repeated points, overlapping edges, or nearly collinear tiny edges may fail.
-- The triangulation backend is still a simple ear-clipping implementation.
+- Degenerate inputs such as repeated points, overlapping edges, or very small nearly collinear edges may fail.
+- The default public pipeline uses a compact ear-clipping triangulation backend for reproducibility.
+- An optional PolyPartition-based backend is included under experimental/, but it is kept separate from the default pipeline and may require local C++ build setup.
 - The implementation is designed for educational and experimental computational geometry use, not for robust industrial CAD/GIS geometry processing.
-- Some advanced diagnostics and archived experiments are intentionally not included in this clean GitHub version.
+- This public version focuses on the main reproducible pipeline; exploratory diagnostics are kept out of the repository to keep the project concise.
 
 ## Future Improvements
 
 Possible next improvements include:
 
-- A cleaner monotone-partition triangulation backend.
-- A fuller Hertel-Mehlhorn-style convex decomposition implementation.
-- Stronger DCEL-based data structures.
-- More systematic benchmark examples.
-- A polished hosted web demo.
+- Integrate the optional PolyPartition / monotone-triangulation backend more tightly into the main Python pipeline.
+- Expand the HM-style convex decomposition stage and compare it systematically with the default pre-merge stage.
+- Strengthen DCEL-based data structures for maintaining adjacency and boundary updates.
+- Add more systematic benchmark examples.
+- Add a polished hosted web demo.
 
 ## Project Status
 
 The current version is a cleaned GitHub-ready implementation of the star-shaped decomposition pipeline with local visualization and interactive testing support.
-
-
-
-
