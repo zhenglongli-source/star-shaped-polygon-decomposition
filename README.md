@@ -147,3 +147,12 @@ Possible next improvements include:
 ## Project Status
 
 The current version is a cleaned GitHub-ready implementation of the star-shaped decomposition pipeline with local visualization and interactive testing support.
+
+## License
+
+This project is released under the MIT License.
+
+The optional PolyPartition backend is included under its own license in
+`third_party/polypartition/`.
+
+If you find this repository useful, a citation, link, or GitHub star is appreciated.
