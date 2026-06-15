@@ -19,6 +19,12 @@ simple polygon
 
 The current implementation focuses on practical algorithm engineering rather than being a production geometry library.
 
+## Demo
+
+![Star-shaped polygon decomposition pipeline](assets/pipeline_demo.png)
+
+The pipeline starts from a simple polygon, triangulates it, and then greedily merges adjacent pieces when their union remains star-shaped. Each final star-shaped region has a nonempty kernel, so one guard placed inside the kernel can cover that region.
+
 ## Repository Contents
 
 ```text
