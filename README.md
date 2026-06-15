@@ -23,7 +23,7 @@ The current implementation focuses on practical algorithm engineering rather tha
 
 ![Star-shaped polygon decomposition pipeline](assets/pipeline_demo.png)
 
-The pipeline starts from a simple polygon, triangulates it, and then greedily merges adjacent pieces when their union remains star-shaped. Each final star-shaped region has a nonempty kernel, so one guard placed inside the kernel can cover that region.
+This diagram illustrates the pipeline conceptually. The actual decomposition may vary depending on the input polygon and merge strategy. The pipeline starts from a simple polygon, triangulates it, and then greedily merges adjacent pieces when their union remains star-shaped. Each final star-shaped region has a nonempty kernel, so one guard placed inside the kernel can cover that region.
 
 ## Repository Contents
 
