@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Computational Geometry Interactive Star Decomposition</title>
+  <style>
+    :root {
+      --bg: #f5f6f8;
+      --panel: #ffffff;
+      --border: #ccd2da;
+      --text: #1f2933;
+      --muted: #5b6675;
+      --accent: #0055aa;
+      --danger: #b00020;
+      --ok: #117a37;
+    }
+
+    body {
+      font-family: Arial, sans-serif;
+      margin: 18px;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    h1 { margin: 0 0 6px 0; }
+
+    .hint {
+      color: var(--muted);
+      font-size: 13px;
+      margin-bottom: 12px;
+      line-height: 1.35;
+    }
+
+    .controls, #info, #editor {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px;
+      box-sizing: border-box;
+    }
+
+    .controls { margin-bottom: 12px; }
+
+    button, select {
+      margin: 4px 3px;
+      padding: 6px 10px;
+      cursor: pointer;
+      border: 1px solid #9aa5b1;
+      border-radius: 5px;
+      background: #fff;
+    }
+
+    button.active {
+      font-weight: bold;
+      border: 2px solid #111;
+      padding: 5px 9px;
+    }
+
+    button.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: white;
+      font-weight: bold;
+    }
+
+    button.danger { color: var(--danger); }
+
+    #layout {
+      display: grid;
+      grid-template-columns: 900px 430px;
+      gap: 16px;
+      align-items: start;
+    }
+
+    #canvas {
+      width: 900px;
+      height: 720px;
+      background: white;
+      border: 1px solid #9aa5b1;
+      border-radius: 8px;
+      cursor: crosshair;
+    }
+
+    #side { display: grid; gap: 12px; }
+
+    #info, #editor {
+      max-height: 450px;
+      overflow-y: auto;
+      font-size: 14px;
+      line-height: 1.35;
+    }
+
+    textarea {
+      width: 100%;
+      height: 120px;
+      font-family: Consolas, monospace;
+      font-size: 12px;
+      box-sizing: border-box;
+      margin-top: 6px;
+    }
+
+    table { border-collapse: collapse; font-size: 13px; }
+    th, td { border: 1px solid #c5ccd3; padding: 3px 6px; }
+    th { background: #eef2f7; }
+
+    .error { color: var(--danger); font-weight: bold; }
+    .ok { color: var(--ok); font-weight: bold; }
+    .small { color: var(--muted); font-size: 12px; }
+    .section-title { font-weight: bold; margin-top: 10px; }
+    pre { white-space: pre-wrap; font-size: 12px; }
+  </style>
+</head>
+
+<body>
+  <h1>Computational Geometry Interactive Star-Shaped Decomposition <span class="small">v3</span></h1>
+  <div class="hint">
+    Draw a simple polygon by clicking vertices in boundary order, or load a built-in example from the backend.
+    This page calls <code>/run_decomposition</code>, so open it through <code>python interactive_server_updated.py</code>, not by double-clicking the file.
+  </div>
+
+  <div class="controls">
+    <button class="primary" onclick="runDecomposition()">Run Decomposition</button>
+    <button onclick="undoPoint()">Undo Point</button>
+    <button class="danger" onclick="clearAll()">Clear</button>
+    <button onclick="loadLocalSample()">Load Local Sample</button>
+    <button onclick="copyCoordinates()">Copy Coordinates</button>
+    <button onclick="downloadSvg()">Export SVG</button>
+
+    <br>
+
+    <label for="exampleSelect">Backend example:</label>
+    <select id="exampleSelect"><option>Loading...</option></select>
+    <button onclick="loadBackendExample()">Load Example</button>
+
+    <br>
+
+    <button id="btnDraft" class="active" onclick="toggleLayer('draft')">Draft Polygon</button>
+    <button id="btnTriangles" class="active" onclick="toggleLayer('triangles')">Triangulation</button>
+    <button id="btnConvex" onclick="toggleLayer('convex')">Convex Pre-Merge</button>
+    <button id="btnFinal" class="active" onclick="toggleLayer('final')">Final Star Regions</button>
+    <button id="btnKernels" class="active" onclick="toggleLayer('kernels')">Kernels</button>
+    <button id="btnGuards" class="active" onclick="toggleLayer('guards')">Guards</button>
+    <button id="btnLabels" class="active" onclick="toggleLayer('labels')">Labels</button>
+  </div>
+
+  <div id="layout">
+    <svg id="canvas" width="900" height="720" viewBox="0 0 900 720" preserveAspectRatio="none"></svg>
+    <div id="side">
+      <div id="info"><b>Status</b><br>Click points on the canvas to create a polygon.</div>
+      <div id="editor">
+        <b>Coordinate Editor</b>
+        <div class="small">Paste JSON coordinates like <code>[[0,0],[4,0],[4,2]]</code>, then Apply.</div>
+        <textarea id="coordText"></textarea>
+        <button onclick="applyCoordinates()">Apply Coordinates</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let draftPoints = [];
+    let resultCase = null;
+    let backendExamples = [];
+
+    const layers = {
+      draft: true,
+      triangles: true,
+      convex: false,
+      final: true,
+      kernels: true,
+      guards: true,
+      labels: true
+    };
+
+    const colors = [
+      "#e6f2ff", "#fff2cc", "#e8f5e9", "#fde2e2",
+      "#f3e5f5", "#e0f7fa", "#fce4ec", "#eeeeee",
+      "#dcedc8", "#ffe0b2", "#d1c4e9", "#b2ebf2"
+    ];
+
+    const canvas = document.getElementById("canvas");
+
+    canvas.addEventListener("click", function(evt) {
+      if (resultCase) {
+        resultCase = null;
+      }
+      const p = screenToSvgPoint(evt);
+      draftPoints.push([round2(p.x), round2(p.y)]);
+      draw();
+      updateDraftInfo();
+    });
+
+    function round2(x) { return Math.round(Number(x) * 100) / 100; }
+
+    function screenToSvgPoint(evt) {
+      const rect = canvas.getBoundingClientRect();
+      const w = Number(canvas.getAttribute("width"));
+      const h = Number(canvas.getAttribute("height"));
+      return {
+        x: (evt.clientX - rect.left) * w / Math.max(rect.width, 1),
+        y: (evt.clientY - rect.top) * h / Math.max(rect.height, 1)
+      };
+    }
+
+    function identityTransform(p) {
+      return {x: Number(p[0]), y: Number(p[1])};
+    }
+
+    function svgEl(name) {
+      return document.createElementNS("http://www.w3.org/2000/svg", name);
+    }
+
+    function polygonToString(points, transform) {
+      return points.map(p => {
+        const q = transform(p);
+        return q.x + "," + q.y;
+      }).join(" ");
+    }
+
+    function getAllPoints(c) {
+      let pts = [];
+      if (!c) {
+        pts.push(...draftPoints);
+        return pts;
+      }
+      pts.push(...(c.polygon || []));
+      for (const tri of c.triangles || []) pts.push(...tri);
+      for (const r of c.convex_regions || []) {
+        pts.push(...(r.polygon || []));
+        pts.push(...(r.kernel || []));
+        if (r.guard) pts.push(r.guard);
+      }
+      for (const r of c.final_regions || []) {
+        pts.push(...(r.polygon || []));
+        pts.push(...(r.kernel || []));
+        if (r.guard) pts.push(r.guard);
+      }
+      for (const g of c.guard_groups || []) {
+        pts.push(...(g.common_kernel || []));
+        if (g.guard) pts.push(g.guard);
+      }
+      return pts;
+    }
+
+    function makeTransform(c) {
+      const width = Number(canvas.getAttribute("width"));
+      const height = Number(canvas.getAttribute("height"));
+      const margin = 48;
+      const pts = getAllPoints(c);
+      if (pts.length === 0) return p => ({x: p[0], y: p[1]});
+      const xs = pts.map(p => Number(p[0]));
+      const ys = pts.map(p => Number(p[1]));
+      const minX = Math.min(...xs), maxX = Math.max(...xs);
+      const minY = Math.min(...ys), maxY = Math.max(...ys);
+      const spanX = Math.max(maxX - minX, 1);
+      const spanY = Math.max(maxY - minY, 1);
+      const scale = Math.min((width - 2 * margin) / spanX, (height - 2 * margin) / spanY);
+      return p => ({
+        x: margin + (Number(p[0]) - minX) * scale,
+        y: margin + (Number(p[1]) - minY) * scale
+      });
+    }
+
+    function drawPolygon(points, transform, options) {
+      if (!points || points.length === 0) return;
+      const poly = svgEl("polygon");
+      poly.setAttribute("points", polygonToString(points, transform));
+      poly.setAttribute("fill", options.fill || "none");
+      poly.setAttribute("stroke", options.stroke || "black");
+      poly.setAttribute("stroke-width", options.width || 2);
+      poly.setAttribute("vector-effect", "non-scaling-stroke");
+      if (options.dash) poly.setAttribute("stroke-dasharray", options.dash);
+      if (options.opacity) poly.setAttribute("opacity", options.opacity);
+      canvas.appendChild(poly);
+    }
+
+    function drawPolyline(points, transform, options) {
+      if (!points || points.length === 0) return;
+      const line = svgEl("polyline");
+      line.setAttribute("points", polygonToString(points, transform));
+      line.setAttribute("fill", "none");
+      line.setAttribute("stroke", options.stroke || "black");
+      line.setAttribute("stroke-width", options.width || 2);
+      line.setAttribute("vector-effect", "non-scaling-stroke");
+      if (options.dash) line.setAttribute("stroke-dasharray", options.dash);
+      canvas.appendChild(line);
+    }
+
+    function drawCircle(point, transform, r, fill, stroke) {
+      if (!point) return;
+      const q = transform(point);
+      const c = svgEl("circle");
+      c.setAttribute("cx", q.x);
+      c.setAttribute("cy", q.y);
+      c.setAttribute("r", r);
+      c.setAttribute("fill", fill);
+      c.setAttribute("stroke", stroke || "black");
+      c.setAttribute("stroke-width", 1.5);
+      c.setAttribute("vector-effect", "non-scaling-stroke");
+      canvas.appendChild(c);
+    }
+
+    function drawText(point, transform, text, dx, dy, size, fill) {
+      if (!point) return;
+      const q = transform(point);
+      const t = svgEl("text");
+      t.setAttribute("x", q.x + dx);
+      t.setAttribute("y", q.y + dy);
+      t.setAttribute("font-size", size || 13);
+      t.setAttribute("fill", fill || "black");
+      t.textContent = text;
+      canvas.appendChild(t);
+    }
+
+    function drawDraft() {
+      if (!layers.draft) return;
+      const transform = identityTransform;
+      if (draftPoints.length >= 2) drawPolyline(draftPoints, transform, {stroke: "#222", width: 2});
+      if (draftPoints.length >= 3) drawPolygon(draftPoints, transform, {fill: "#dddddd", stroke: "#222", width: 2, opacity: 0.35});
+      draftPoints.forEach((p, i) => {
+        drawCircle(p, transform, 5, "black", "black");
+        if (layers.labels) drawText(p, transform, i, 8, -8, 14, "#b00020");
+      });
+    }
+
+    function drawResult() {
+      const c = resultCase;
+      if (!c) return;
+      const transform = makeTransform(c);
+
+      if (layers.triangles) {
+        for (const tri of c.triangles || []) {
+          drawPolygon(tri, transform, {fill: "none", stroke: "#777", width: 1.2, dash: "4 4"});
+        }
+      }
+
+      if (layers.convex) {
+        (c.convex_regions || []).forEach((r, i) => {
+          drawPolygon(r.polygon, transform, {fill: colors[i % colors.length], stroke: "#444", width: 1.5, opacity: 0.55});
+        });
+      }
+
+      if (layers.final) {
+        (c.final_regions || []).forEach((r, i) => {
+          drawPolygon(r.polygon, transform, {fill: colors[i % colors.length], stroke: "#0055aa", width: 2.5, opacity: 0.7});
+          if (r.guard) drawText(r.guard, transform, "R" + i, 8, -8, 14, "#0055aa");
+        });
+      }
+
+      if (layers.kernels) {
+        (c.final_regions || []).forEach((r) => {
+          drawPolygon(r.kernel, transform, {fill: "#ffcc00", stroke: "#aa6600", width: 2, opacity: 0.65});
+        });
+        (c.guard_groups || []).forEach((g) => {
+          if (g.common_kernel && g.common_kernel.length > 1) {
+            drawPolygon(g.common_kernel, transform, {fill: "none", stroke: "#cc0000", width: 2, dash: "6 3"});
+          }
+        });
+      }
+
+      drawPolygon(c.polygon, transform, {fill: "none", stroke: "black", width: 3});
+
+      if (layers.guards) {
+        (c.final_regions || []).forEach(r => drawCircle(r.guard, transform, 5, "#d00000", "black"));
+        (c.guard_groups || []).forEach((g, i) => {
+          drawCircle(g.guard, transform, 7, "#00aa00", "black");
+          if (g.guard) drawText(g.guard, transform, "G" + i, 10, 4, 14, "#008000");
+        });
+      }
+
+      if (layers.labels) {
+        c.polygon.forEach((p, i) => {
+          drawCircle(p, transform, 4, "black", "black");
+          drawText(p, transform, i, 8, -8, 14, "#b00020");
+        });
+      }
+    }
+
+    function draw() {
+      canvas.innerHTML = "";
+      if (resultCase) drawResult(); else drawDraft();
+      updateButtons();
+      updateCoordEditor();
+    }
+
+    function updateButtons() {
+      const map = {
+        draft: "btnDraft",
+        triangles: "btnTriangles",
+        convex: "btnConvex",
+        final: "btnFinal",
+        kernels: "btnKernels",
+        guards: "btnGuards",
+        labels: "btnLabels"
+      };
+      for (const key in map) {
+        const btn = document.getElementById(map[key]);
+        if (layers[key]) btn.classList.add("active"); else btn.classList.remove("active");
+      }
+    }
+
+    function toggleLayer(name) { layers[name] = !layers[name]; draw(); }
+
+    function undoPoint() { draftPoints.pop(); resultCase = null; draw(); updateDraftInfo(); }
+
+    function clearAll() { draftPoints = []; resultCase = null; draw(); updateDraftInfo(); }
+
+    function loadLocalSample() {
+      draftPoints = [[120,120],[520,120],[620,260],[450,240],[380,520],[280,330],[120,460]];
+      resultCase = null;
+      draw();
+      updateDraftInfo();
+    }
+
+    function updateCoordEditor() {
+      const area = document.getElementById("coordText");
+      if (document.activeElement !== area) {
+        area.value = JSON.stringify(draftPoints, null, 2);
+      }
+    }
+
+    function applyCoordinates() {
+      try {
+        const arr = JSON.parse(document.getElementById("coordText").value);
+        if (!Array.isArray(arr)) throw new Error("Top-level value must be an array.");
+        draftPoints = arr.map(p => [Number(p[0]), Number(p[1])]);
+        if (draftPoints.some(p => !Number.isFinite(p[0]) || !Number.isFinite(p[1]))) {
+          throw new Error("Every coordinate must be numeric.");
+        }
+        resultCase = null;
+        draw();
+        updateDraftInfo();
+      } catch (err) {
+        document.getElementById("info").innerHTML = `<span class="error">Coordinate parse error:</span><br><pre>${escapeHtml(String(err))}</pre>`;
+      }
+    }
+
+    async function copyCoordinates() {
+      const text = JSON.stringify(draftPoints, null, 2);
+      try {
+        await navigator.clipboard.writeText(text);
+        document.getElementById("info").innerHTML = `<span class="ok">Coordinates copied.</span><br><textarea readonly>${text}</textarea>`;
+      } catch (err) {
+        document.getElementById("info").innerHTML = `<b>Coordinates</b><br><textarea readonly>${text}</textarea>`;
+      }
+    }
+
+    function updateDraftInfo(extraMessage = "") {
+      let html = "";
+      html += `<b>Draft Polygon</b><br>`;
+      if (extraMessage) html += `<span class="ok">${extraMessage}</span><br>`;
+      html += `Number of vertices: ${draftPoints.length}<br>`;
+      html += `<span class="small">Click vertices in boundary order. Do not repeat the first point.</span><br>`;
+      html += `<textarea readonly>${escapeHtml(JSON.stringify(draftPoints, null, 2))}</textarea>`;
+      document.getElementById("info").innerHTML = html;
+    }
+
+    function updateResultInfo(c) {
+      const s = c.summary || {};
+      const stats = (c.merge_stats && c.merge_stats.total) ? c.merge_stats.total : {};
+      let html = "";
+      html += `<h2>${escapeHtml(c.name)}</h2>`;
+      html += `<b>Summary</b><br>`;
+      html += `Vertices: ${s.vertices}<br>`;
+      html += `Initial triangles: ${s.initial_triangles}<br>`;
+      html += `Convex pre-merge regions: ${s.convex_regions}<br>`;
+      html += `Final star-shaped regions: ${s.final_regions}<br>`;
+      html += `Guard groups: ${s.guard_groups}<br>`;
+      html += `Accepted merges: ${s.accepted_merges}<br>`;
+      if (c.input_area !== undefined) html += `Input area: ${Number(c.input_area).toFixed(3)}<br>`;
+
+      html += `<div class="section-title">Final Regions</div>`;
+      (c.final_regions || []).forEach(r => {
+        html += `R${r.index}: boundary vertices=${r.boundary_vertices}, kernel vertices=${r.kernel_vertices}, source triangles=${r.source_count}<br>`;
+      });
+
+      html += `<div class="section-title">Guard Groups</div>`;
+      if ((c.guard_groups || []).length === 0) html += `None.<br>`;
+      (c.guard_groups || []).forEach(g => {
+        html += `G${g.index}: regions=[${g.regions.join(", ")}], type=${g.geom_type}, area=${Number(g.area).toFixed(4)}<br>`;
+      });
+
+      html += `<div class="section-title">Merge Stats</div>`;
+      html += `Candidate pairs examined: ${stats.candidate_pairs_examined ?? "n/a"}<br>`;
+      html += `Valid merge candidates: ${stats.valid_merge_candidates ?? "n/a"}<br>`;
+      html += `Adjacency tests: ${stats.adjacency_tests ?? "n/a"}<br>`;
+      html += `Boundary-union successes: ${stats.boundary_union_success ?? "n/a"}<br>`;
+      html += `Shapely union fallbacks: ${stats.shapely_union_fallback ?? 0}<br>`;
+      html += `Kernel tests: ${stats.kernel_tests ?? "n/a"}<br>`;
+
+      if ((c.strategy_comparison || []).length > 0) {
+        html += `<div class="section-title">Strategy Comparison</div>`;
+        html += `<table><tr><th>strategy</th><th>convex</th><th>final</th><th>merges</th></tr>`;
+        (c.strategy_comparison || []).forEach(row => {
+          html += `<tr><td>${escapeHtml(row.strategy)}</td><td>${row.convex_pieces}</td><td>${row.final_star_regions}</td><td>${row.accepted_merges}</td></tr>`;
+        });
+        html += `</table>`;
+      }
+
+      html += `<div class="section-title">Merge Log</div>`;
+      if ((c.merge_log || []).length === 0) html += `No accepted merges.<br>`;
+      else {
+        html += `<ol>`;
+        for (const item of c.merge_log) html += `<li>${escapeHtml(item)}</li>`;
+        html += `</ol>`;
+      }
+
+      html += `<div class="section-title">Input Coordinates</div>`;
+      html += `<textarea readonly>${escapeHtml(JSON.stringify(draftPoints, null, 2))}</textarea>`;
+      document.getElementById("info").innerHTML = html;
+    }
+
+    async function runDecomposition() {
+      if (draftPoints.length < 3) {
+        document.getElementById("info").innerHTML = `<span class="error">A polygon needs at least 3 vertices.</span>`;
+        return;
+      }
+      document.getElementById("info").innerHTML = "Running decomposition...";
+      try {
+        const response = await fetch("/run_decomposition", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({polygon: draftPoints, include_strategy: true})
+        });
+        const data = await response.json();
+        if (!data.ok) {
+          document.getElementById("info").innerHTML = `<span class="error">Backend error:</span><br><pre>${escapeHtml(data.error || "unknown error")}</pre>`;
+          return;
+        }
+        resultCase = data.case;
+        draftPoints = data.case.polygon || draftPoints;
+        draw();
+        updateResultInfo(resultCase);
+      } catch (err) {
+        document.getElementById("info").innerHTML = `<span class="error">Request failed.</span><br><pre>${escapeHtml(String(err))}</pre>`;
+      }
+    }
+
+    async function loadExamples() {
+      const select = document.getElementById("exampleSelect");
+      try {
+        const response = await fetch("/examples");
+        const data = await response.json();
+        if (!data.ok) throw new Error(data.error || "Could not load examples.");
+        backendExamples = data.examples || [];
+        select.innerHTML = "";
+        backendExamples.forEach((ex, i) => {
+          const opt = document.createElement("option");
+          opt.value = String(i);
+          opt.textContent = ex.name;
+          select.appendChild(opt);
+        });
+      } catch (err) {
+        backendExamples = [];
+        select.innerHTML = `<option>Backend unavailable</option>`;
+      }
+    }
+
+    function fitPolygonToCanvas(points) {
+      if (!points || points.length === 0) return [];
+      const width = Number(canvas.getAttribute("width"));
+      const height = Number(canvas.getAttribute("height"));
+      const margin = 55;
+      const xs = points.map(p => Number(p[0]));
+      const ys = points.map(p => Number(p[1]));
+      const minX = Math.min(...xs), maxX = Math.max(...xs);
+      const minY = Math.min(...ys), maxY = Math.max(...ys);
+      const spanX = Math.max(maxX - minX, 1);
+      const spanY = Math.max(maxY - minY, 1);
+      const scale = Math.min((width - 2 * margin) / spanX, (height - 2 * margin) / spanY);
+      return points.map(p => [
+        round2(margin + (Number(p[0]) - minX) * scale),
+        round2(margin + (Number(p[1]) - minY) * scale)
+      ]);
+    }
+
+    function loadBackendExample() {
+      const idx = Number(document.getElementById("exampleSelect").value);
+      if (!backendExamples[idx]) return;
+      const raw = backendExamples[idx].polygon.map(p => [Number(p[0]), Number(p[1])]);
+
+      // Built-in examples are usually in small mathematical coordinates, such as
+      // [0, 0], [10, 0], ... . Draft drawing uses screen/SVG coordinates,
+      // so scale and translate the example into the canvas for interactive use.
+      // Uniform scaling and translation preserve the decomposition structure.
+      draftPoints = fitPolygonToCanvas(raw);
+      resultCase = null;
+      draw();
+      updateDraftInfo(`Loaded backend example: ${escapeHtml(backendExamples[idx].name)}. Coordinates were fit to the canvas.`);
+    }
+
+    function downloadSvg() {
+      const clone = canvas.cloneNode(true);
+      clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+      const blob = new Blob([clone.outerHTML], {type: "image/svg+xml"});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "star_decomposition.svg";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    }
+
+    function escapeHtml(s) {
+      return String(s)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    loadExamples();
+    updateDraftInfo();
+    draw();
+  </script>
+</body>
+</html>
+
+

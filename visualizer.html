@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Computational Geometry Polygon Decomposition Visualizer</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+      background: #f7f7f7;
+    }
+
+    h1 {
+      margin-bottom: 8px;
+    }
+
+    .controls {
+      margin-bottom: 12px;
+      padding: 12px;
+      background: white;
+      border: 1px solid #ccc;
+    }
+
+    button, select {
+      margin: 4px;
+      padding: 6px 10px;
+      cursor: pointer;
+    }
+
+    button.active {
+      font-weight: bold;
+      border: 2px solid black;
+    }
+
+    #layout {
+      display: flex;
+      gap: 16px;
+      align-items: flex-start;
+    }
+
+    #canvas {
+      background: white;
+      border: 1px solid #aaa;
+    }
+
+    #info {
+      width: 360px;
+      background: white;
+      border: 1px solid #ccc;
+      padding: 12px;
+      max-height: 720px;
+      overflow-y: auto;
+      font-size: 14px;
+    }
+
+    .small {
+      color: #555;
+      font-size: 13px;
+    }
+  </style>
+</head>
+
+<body>
+  <h1>Computational Geometry Star-Shaped Decomposition Visualizer</h1>
+  <div class="small">
+    Debug viewer for polygon, triangulation, convex pre-merge regions, final star-shaped regions, kernels, and guards.
+  </div>
+
+  <div class="controls">
+    <label for="caseSelect">Example:</label>
+    <select id="caseSelect"></select>
+
+    <br>
+
+    <button id="btnPolygon" class="active" onclick="toggleLayer('polygon')">Polygon</button>
+    <button id="btnTriangles" class="active" onclick="toggleLayer('triangles')">Triangulation</button>
+    <button id="btnConvex" onclick="toggleLayer('convex')">Convex Pre-Merge</button>
+    <button id="btnFinal" class="active" onclick="toggleLayer('final')">Final Star Regions</button>
+    <button id="btnKernels" class="active" onclick="toggleLayer('kernels')">Kernels</button>
+    <button id="btnGuards" class="active" onclick="toggleLayer('guards')">Guards</button>
+    <button id="btnLabels" class="active" onclick="toggleLayer('labels')">Vertex Labels</button>
+  </div>
+
+  <div id="layout">
+    <svg id="canvas" width="900" height="720"></svg>
+    <div id="info"></div>
+  </div>
+
+  <script>
+    const DATA_PATH = "debug_output.json";
+
+    let allData = null;
+    let currentCase = null;
+
+    const layers = {
+      polygon: true,
+      triangles: true,
+      convex: false,
+      final: true,
+      kernels: true,
+      guards: true,
+      labels: true
+    };
+
+    const colors = [
+      "#e6f2ff", "#fff2cc", "#e8f5e9", "#fde2e2",
+      "#f3e5f5", "#e0f7fa", "#fce4ec", "#eeeeee",
+      "#dcedc8", "#ffe0b2", "#d1c4e9", "#b2ebf2"
+    ];
+
+    function svgEl(name) {
+      return document.createElementNS("http://www.w3.org/2000/svg", name);
+    }
+
+    function polygonToString(points, transform) {
+      return points.map(p => {
+        const q = transform(p);
+        return q.x + "," + q.y;
+      }).join(" ");
+    }
+
+    function getAllPoints(c) {
+      let pts = [...c.polygon];
+
+      for (const tri of c.triangles || []) pts.push(...tri);
+
+      for (const r of c.convex_regions || []) {
+        pts.push(...(r.polygon || []));
+        pts.push(...(r.kernel || []));
+        if (r.guard) pts.push(r.guard);
+      }
+
+      for (const r of c.final_regions || []) {
+        pts.push(...(r.polygon || []));
+        pts.push(...(r.kernel || []));
+        if (r.guard) pts.push(r.guard);
+      }
+
+      for (const g of c.guard_groups || []) {
+        pts.push(...(g.common_kernel || []));
+        if (g.guard) pts.push(g.guard);
+      }
+
+      return pts;
+    }
+
+    function makeTransform(c) {
+      const svg = document.getElementById("canvas");
+      const width = Number(svg.getAttribute("width"));
+      const height = Number(svg.getAttribute("height"));
+      const margin = 60;
+
+      const pts = getAllPoints(c);
+      const xs = pts.map(p => p[0]);
+      const ys = pts.map(p => p[1]);
+
+      const minX = Math.min(...xs);
+      const maxX = Math.max(...xs);
+      const minY = Math.min(...ys);
+      const maxY = Math.max(...ys);
+
+      const spanX = Math.max(maxX - minX, 1);
+      const spanY = Math.max(maxY - minY, 1);
+
+      const scale = Math.min(
+        (width - 2 * margin) / spanX,
+        (height - 2 * margin) / spanY
+      );
+
+      return function(p) {
+        return {
+          x: margin + (p[0] - minX) * scale,
+          y: height - margin - (p[1] - minY) * scale
+        };
+      };
+    }
+
+    function drawPolygon(points, transform, options) {
+      if (!points || points.length === 0) return;
+
+      const poly = svgEl("polygon");
+      poly.setAttribute("points", polygonToString(points, transform));
+      poly.setAttribute("fill", options.fill || "none");
+      poly.setAttribute("stroke", options.stroke || "black");
+      poly.setAttribute("stroke-width", options.width || 2);
+      if (options.dash) poly.setAttribute("stroke-dasharray", options.dash);
+      if (options.opacity) poly.setAttribute("opacity", options.opacity);
+
+      document.getElementById("canvas").appendChild(poly);
+    }
+
+    function drawCircle(point, transform, r, fill, stroke) {
+      if (!point) return;
+
+      const q = transform(point);
+      const c = svgEl("circle");
+      c.setAttribute("cx", q.x);
+      c.setAttribute("cy", q.y);
+      c.setAttribute("r", r);
+      c.setAttribute("fill", fill);
+      c.setAttribute("stroke", stroke || "black");
+      c.setAttribute("stroke-width", 1.5);
+
+      document.getElementById("canvas").appendChild(c);
+    }
+
+    function drawText(point, transform, text, dx, dy, size, fill) {
+      const q = transform(point);
+      const t = svgEl("text");
+      t.setAttribute("x", q.x + dx);
+      t.setAttribute("y", q.y + dy);
+      t.setAttribute("font-size", size || 13);
+      t.setAttribute("fill", fill || "black");
+      t.textContent = text;
+
+      document.getElementById("canvas").appendChild(t);
+    }
+
+    function draw() {
+      const svg = document.getElementById("canvas");
+      svg.innerHTML = "";
+
+      const c = currentCase;
+      const transform = makeTransform(c);
+
+      if (layers.triangles) {
+        for (const tri of c.triangles || []) {
+          drawPolygon(tri, transform, {
+            fill: "none",
+            stroke: "#777",
+            width: 1.2,
+            dash: "4 4"
+          });
+        }
+      }
+
+      if (layers.convex) {
+        (c.convex_regions || []).forEach((r, i) => {
+          drawPolygon(r.polygon, transform, {
+            fill: colors[i % colors.length],
+            stroke: "#444",
+            width: 1.5,
+            opacity: 0.55
+          });
+        });
+      }
+
+      if (layers.final) {
+        (c.final_regions || []).forEach((r, i) => {
+          drawPolygon(r.polygon, transform, {
+            fill: colors[i % colors.length],
+            stroke: "#0055aa",
+            width: 2.5,
+            opacity: 0.7
+          });
+
+          const center = r.guard;
+          if (center) {
+            drawText(center, transform, "R" + i, 8, -8, 14, "#0055aa");
+          }
+        });
+      }
+
+      if (layers.kernels) {
+        (c.final_regions || []).forEach((r, i) => {
+          drawPolygon(r.kernel, transform, {
+            fill: "#ffcc00",
+            stroke: "#aa6600",
+            width: 2,
+            opacity: 0.65
+          });
+        });
+
+        (c.guard_groups || []).forEach((g, i) => {
+          if (g.common_kernel && g.common_kernel.length > 1) {
+            drawPolygon(g.common_kernel, transform, {
+              fill: "none",
+              stroke: "#cc0000",
+              width: 2,
+              dash: "6 3"
+            });
+          }
+        });
+      }
+
+      if (layers.polygon) {
+        drawPolygon(c.polygon, transform, {
+          fill: "none",
+          stroke: "black",
+          width: 3
+        });
+      }
+
+      if (layers.guards) {
+        (c.final_regions || []).forEach((r, i) => {
+          drawCircle(r.guard, transform, 5, "#d00000", "black");
+        });
+
+        (c.guard_groups || []).forEach((g, i) => {
+          drawCircle(g.guard, transform, 7, "#00aa00", "black");
+          if (g.guard) {
+            drawText(g.guard, transform, "G" + i, 10, 4, 14, "#008000");
+          }
+        });
+      }
+
+      if (layers.labels) {
+        c.polygon.forEach((p, i) => {
+          drawCircle(p, transform, 4, "black", "black");
+          drawText(p, transform, i, 8, -8, 14, "#b00020");
+        });
+      }
+
+      updateInfo();
+      updateButtons();
+    }
+
+    function updateInfo() {
+      const c = currentCase;
+      const s = c.summary;
+
+      let html = "";
+      html += `<h2>${c.name}</h2>`;
+      html += `<b>Summary</b><br>`;
+      html += `Vertices: ${s.vertices}<br>`;
+      html += `Initial triangles: ${s.initial_triangles}<br>`;
+      html += `Convex pre-merge regions: ${s.convex_regions}<br>`;
+      html += `Final star-shaped regions: ${s.final_regions}<br>`;
+      html += `Guard groups: ${s.guard_groups}<br>`;
+      html += `Accepted merges: ${s.accepted_merges}<br><br>`;
+
+      html += `<b>Final Regions</b><br>`;
+      (c.final_regions || []).forEach(r => {
+        html += `Region ${r.index}: boundary vertices=${r.boundary_vertices}, kernel vertices=${r.kernel_vertices}, source triangles=${r.source_count}<br>`;
+      });
+
+      html += `<br><b>Guard Groups</b><br>`;
+      (c.guard_groups || []).forEach(g => {
+        html += `Group ${g.index}: regions=[${g.regions.join(", ")}], type=${g.geom_type}, area=${Number(g.area).toFixed(4)}<br>`;
+      });
+
+      html += `<br><b>Merge Log</b><br>`;
+      if ((c.merge_log || []).length === 0) {
+        html += `No accepted merges.<br>`;
+      } else {
+        html += `<ol>`;
+        for (const item of c.merge_log) {
+          html += `<li>${item}</li>`;
+        }
+        html += `</ol>`;
+      }
+
+      html += `<br><b>Strategy Comparison</b><br>`;
+      html += `<table border="1" cellpadding="4" cellspacing="0">`;
+      html += `<tr><th>strategy</th><th>convex</th><th>final</th><th>merges</th></tr>`;
+      (c.strategy_comparison || []).forEach(row => {
+        html += `<tr>`;
+        html += `<td>${row.strategy}</td>`;
+        html += `<td>${row.convex_pieces}</td>`;
+        html += `<td>${row.final_star_regions}</td>`;
+        html += `<td>${row.accepted_merges}</td>`;
+        html += `</tr>`;
+      });
+      html += `</table>`;
+
+      document.getElementById("info").innerHTML = html;
+    }
+
+    function updateButtons() {
+      const map = {
+        polygon: "btnPolygon",
+        triangles: "btnTriangles",
+        convex: "btnConvex",
+        final: "btnFinal",
+        kernels: "btnKernels",
+        guards: "btnGuards",
+        labels: "btnLabels"
+      };
+
+      for (const key in map) {
+        const btn = document.getElementById(map[key]);
+        if (layers[key]) btn.classList.add("active");
+        else btn.classList.remove("active");
+      }
+    }
+
+    function toggleLayer(name) {
+      layers[name] = !layers[name];
+      draw();
+    }
+
+    function initCaseSelector() {
+      const select = document.getElementById("caseSelect");
+      select.innerHTML = "";
+
+      allData.cases.forEach((c, i) => {
+        const opt = document.createElement("option");
+        opt.value = i;
+        opt.textContent = c.name;
+        select.appendChild(opt);
+      });
+
+      select.addEventListener("change", () => {
+        currentCase = allData.cases[Number(select.value)];
+        draw();
+      });
+
+      currentCase = allData.cases[0];
+    }
+
+    fetch(DATA_PATH)
+      .then(response => {
+        if (!response.ok) {
+          throw new Error("Could not load " + DATA_PATH);
+        }
+        return response.json();
+      })
+      .then(data => {
+        allData = data;
+        initCaseSelector();
+        draw();
+      })
+      .catch(err => {
+        document.body.innerHTML += `
+          <p style="color:red;">
+            Failed to load JSON. Make sure you opened this page through Python http.server, not by double-clicking the file.
+          </p>
+          <pre>${err}</pre>
+        `;
+      });
+  </script>
+</body>
+</html>
+
+
