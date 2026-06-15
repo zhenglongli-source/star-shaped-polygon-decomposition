@@ -28,9 +28,9 @@ The pipeline starts from a simple polygon, triangulates it, and then greedily me
 ## Repository Contents
 
 ```text
-main.py                         Main demo script
+main.py                            Main demo script
 export_debug_json.py               Exports debug_output.json for the static visualizer
-examples.py                     Built-in polygon examples
+examples.py                        Built-in polygon examples
 triangulation.py                   Ear-clipping triangulation
 star_merge.py                      Convex pre-merge and star-shaped merge logic
 guard_groups.py                    Optional shared-guard grouping
