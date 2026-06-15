@@ -33,7 +33,6 @@ visualizer.html                    Static browser visualizer for exported exampl
 interactive.html                   Interactive browser demo for drawing custom polygons
 interactive_server.py              Local backend for the interactive demo
 debug_output.json                  Pre-exported example data
-assets/                            Example output images
 ```
 
 ## Requirements
